@@ -34,27 +34,6 @@ async function initializeAgent() {
   }
 }
 
-// Simple NLP to detect math intent and extract numbers
-function parseMathRequest(message) {
-  // Check if the message contains keywords related to addition or multiplication
-  const hasAdditionIntent = /add|sum|plus|\+/i.test(message);
-  const hasMultiplicationIntent =
-    /multiply|multiplication|product|times|\*/i.test(message);
-
-  if (!hasAdditionIntent && !hasMultiplicationIntent) return null;
-
-  // Extract numbers from the message
-  const numbers = message.match(/-?\d+(\.\d+)?/g);
-
-  if (!numbers || numbers.length < 2) return null;
-
-  return {
-    num1: parseFloat(numbers[0]),
-    num2: parseFloat(numbers[1]),
-    operation: hasMultiplicationIntent ? "multiply" : "add",
-  };
-}
-
 // Execute a tool through the MCP server
 async function executeTool(toolId, params) {
   try {
@@ -96,35 +75,21 @@ async function processMessage(message) {
   }
 
   // Try to parse as a math request
-  const mathParams = parseMathRequest(message);
 
-  if (mathParams) {
-    const operation = mathParams.operation;
-    console.log(
-      `I'll calculate ${mathParams.num1} ${
-        operation === "multiply" ? "×" : "+"
-      } ${mathParams.num2} for you...`
-    );
-    console.log(operation);
-    const result = await executeTool(operation, mathParams);
-
-    if (result.error) {
-      console.log(`Sorry, there was an error: ${JSON.stringify(result.error)}`);
-    } else {
-      console.log(
-        `The result of ${result.num1} ${operation === "multiply" ? "×" : "+"} ${
-          result.num2
-        } is ${result.result}`
-      );
+  // If no specific intent is detected, pass to the generic agent endpoint
+  try {
+    const final = await axios.post(`${MCP_SERVER_URL}/agent`, { message });
+    const { response, tool, parameters, explanation } = final.data;
+    if (tool) {
+      const result = await executeTool(tool, parameters);
+      console.log(result);
     }
-  } else {
-    // If no specific intent is detected, pass to the generic agent endpoint
-    try {
-      const response = await axios.post(`${MCP_SERVER_URL}/agent`, { message });
-      console.log(response.data.response);
-    } catch (error) {
-      console.log("Sorry, I had trouble processing your request.");
-    }
+    console.log(response);
+    console.log(tool);
+    console.log(parameters);
+    console.log(explanation);
+  } catch (error) {
+    console.log("Sorry, I had trouble processing your request.");
   }
 }
 

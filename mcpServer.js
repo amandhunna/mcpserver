@@ -38,6 +38,25 @@ const tools = [
     },
   },
   {
+    id: "subtract",
+    name: "subtraction",
+    description: "Subtracts second number from first number",
+    parameters: {
+      type: "object",
+      properties: {
+        num1: {
+          type: "number",
+          description: "Number to subtract from",
+        },
+        num2: {
+          type: "number",
+          description: "Number to subtract",
+        },
+      },
+      required: ["num1", "num2"],
+    },
+  },
+  {
     id: "multiply",
     name: "multiplication",
     description: "Multiplies two numbers together",
@@ -46,6 +65,44 @@ const tools = [
       properties: {
         num1: { type: "number" },
         num2: { type: "number" },
+      },
+      required: ["num1", "num2"],
+    },
+  },
+  {
+    id: "divide",
+    name: "division",
+    description: "Divides first number by second number",
+    parameters: {
+      type: "object",
+      properties: {
+        num1: {
+          type: "number",
+          description: "Number to divide",
+        },
+        num2: {
+          type: "number",
+          description: "Number to divide by",
+        },
+      },
+      required: ["num1", "num2"],
+    },
+  },
+  {
+    id: "power",
+    name: "power",
+    description: "Raises first number to the power of second number",
+    parameters: {
+      type: "object",
+      properties: {
+        num1: {
+          type: "number",
+          description: "Base number",
+        },
+        num2: {
+          type: "number",
+          description: "Exponent",
+        },
       },
       required: ["num1", "num2"],
     },
@@ -67,6 +124,10 @@ app.post("/execute/:toolId", async (req, res) => {
   try {
     switch (toolId) {
       case "add":
+      case "subtract":
+      case "multiply":
+      case "divide":
+      case "power":
         const { num1, num2 } = params;
 
         // Validate parameters
@@ -78,32 +139,11 @@ app.post("/execute/:toolId", async (req, res) => {
         }
 
         // Call the calculator API
-        const response = await axios.post(`${CALCULATOR_API_URL}/add`, {
+        const response = await axios.post(`${CALCULATOR_API_URL}/${toolId}`, {
           num1,
           num2,
         });
         return res.json(response.data);
-
-      case "multiply":
-        const { num1: multNum1, num2: multNum2 } = params;
-
-        // Validate parameters
-        if (typeof multNum1 !== "number" || typeof multNum2 !== "number") {
-          return res.status(400).json({
-            error: "Invalid parameters. Both num1 and num2 must be numbers.",
-            received: { num1: typeof multNum1, num2: typeof multNum2 },
-          });
-        }
-
-        // Call the calculator API
-        const multResponse = await axios.post(
-          `${CALCULATOR_API_URL}/multiply`,
-          {
-            num1: multNum1,
-            num2: multNum2,
-          }
-        );
-        return res.json(multResponse.data);
 
       default:
         return res.status(404).json({ error: `Tool '${toolId}' not found` });
@@ -144,6 +184,11 @@ app.post("/agent", async (req, res) => {
       `http://localhost:${process.env.PORT || 3001}/execute/${tool}`,
       parameters
     );
+
+    // Ensure we have a valid response
+    if (!executeResponse.data) {
+      throw new Error("No data received from calculator API");
+    }
 
     return res.json({
       explanation,
