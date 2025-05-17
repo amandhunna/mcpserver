@@ -3,6 +3,8 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const axios = require("axios");
 const cors = require("cors");
+const { processUserMessage } = require("./claudeService");
+require("dotenv").config();
 
 const app = express();
 
@@ -126,18 +128,35 @@ app.post("/agent", async (req, res) => {
     return res.status(400).json({ error: "Message is required" });
   }
 
-  // Here we would typically process the message and determine which tools to use
-  // For this demo, we'll just return information about available tools
+  try {
+    // Process the message with Claude
+    const claudeResponse = await processUserMessage(message);
 
-  return res.json({
-    response:
-      "I'm the MCP server. I can help you with calculations. To use the addition tool, you need to provide two numbers.",
-    availableTools: tools.map((tool) => ({
-      id: tool.id,
-      name: tool.name,
-      description: tool.description,
-    })),
-  });
+    if (claudeResponse.error) {
+      return res.status(500).json({ error: claudeResponse.error });
+    }
+
+    // Execute the tool based on Claude's response
+    const { tool, parameters, explanation } = claudeResponse;
+
+    // Make a request to the execute endpoint
+    const executeResponse = await axios.post(
+      `http://localhost:${process.env.PORT || 3001}/execute/${tool}`,
+      parameters
+    );
+
+    return res.json({
+      explanation,
+      result: executeResponse.data,
+      toolUsed: tool,
+    });
+  } catch (error) {
+    console.error("Error processing message:", error);
+    return res.status(500).json({
+      error: "Failed to process message",
+      details: error.message,
+    });
+  }
 });
 
 // Health check endpoint
