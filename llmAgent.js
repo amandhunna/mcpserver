@@ -58,6 +58,8 @@ function parseMathRequest(message) {
 // Execute a tool through the MCP server
 async function executeTool(toolId, params) {
   try {
+    console.log("tool id", toolId);
+    console.log("params", params);
     const response = await axios.post(
       `${MCP_SERVER_URL}/execute/${toolId}`,
       params
@@ -103,11 +105,11 @@ async function processMessage(message) {
         operation === "multiply" ? "×" : "+"
       } ${mathParams.num2} for you...`
     );
-
+    console.log(operation);
     const result = await executeTool(operation, mathParams);
 
     if (result.error) {
-      console.log(`Sorry, there was an error: ${result.error}`);
+      console.log(`Sorry, there was an error: ${JSON.stringify(result.error)}`);
     } else {
       console.log(
         `The result of ${result.num1} ${operation === "multiply" ? "×" : "+"} ${

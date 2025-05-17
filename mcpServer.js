@@ -82,6 +82,27 @@ app.post("/execute/:toolId", async (req, res) => {
         });
         return res.json(response.data);
 
+      case "multiply":
+        const { num1: multNum1, num2: multNum2 } = params;
+
+        // Validate parameters
+        if (typeof multNum1 !== "number" || typeof multNum2 !== "number") {
+          return res.status(400).json({
+            error: "Invalid parameters. Both num1 and num2 must be numbers.",
+            received: { num1: typeof multNum1, num2: typeof multNum2 },
+          });
+        }
+
+        // Call the calculator API
+        const multResponse = await axios.post(
+          `${CALCULATOR_API_URL}/multiply`,
+          {
+            num1: multNum1,
+            num2: multNum2,
+          }
+        );
+        return res.json(multResponse.data);
+
       default:
         return res.status(404).json({ error: `Tool '${toolId}' not found` });
     }
