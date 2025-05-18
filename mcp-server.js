@@ -135,7 +135,7 @@ async function processUserMessage(message) {
       messages: [{ role: "user", content: message }],
       temperature: 0.7,
     });
-
+    console.log("response", JSON.stringify(response));
     const content = response.content[0].text;
     try {
       const parsedResponse = JSON.parse(content);
