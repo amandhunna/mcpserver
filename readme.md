@@ -1,94 +1,94 @@
-Setting Up the MCP Environment
-This guide explains how to set up and run the complete MCP (Model-Consumer-Provider) environment with three components:
+# MCP Calculator Service
 
-Calculator Express API
-MCP Server
-LLM Agent
-Prerequisites
-Node.js (v14 or later)
-npm or yarn
-Project Structure
-mcp-environment/
-│
-├── calculator-api/
-│ ├── app.js
-│ └── package.json
-│
-├── mcp-server/
-│ ├── server.js
-│ └── package.json
-│
-└── llm-agent/
-├── agent.js
-└── package.json
-Installation
+A Model-Context-Protocol (MCP) implementation for a calculator service that uses Claude AI to process natural language requests and perform mathematical calculations.
 
-1. Set up Calculator API
-   bash
-   cd calculator-api
-   npm install
-2. Set up MCP Server
-   bash
-   cd mcp-server
-   npm install
-3. Set up LLM Agent
-   bash
-   cd llm-agent
-   npm install
-   Running the Environment
-   Open three terminal windows, one for each component:
+## Architecture
 
-Terminal 1: Start Calculator API
-bash
-cd calculator-api
+The service consists of three main components:
+
+1. **Calculator API** (`calculator-api.js`): Handles basic mathematical operations
+2. **MCP Server** (`mcp-server.js`): Manages LLM integration and tool orchestration
+3. **MCP Client** (`mcp-client.js`): Provides a user interface for interacting with the service
+
+## Setup
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Create a `.env` file in the root directory with the following variables:
+
+```
+ANTHROPIC_API_KEY=your_api_key_here
+PORT=3000
+MCP_PORT=3001
+```
+
+## Running the Service
+
+You can run all components concurrently:
+
+```bash
 npm start
+```
 
-# Should see: Calculator API running on port 3000
+Or run them individually:
 
-Terminal 2: Start MCP Server
-bash
-cd mcp-server
-npm start
+```bash
+# Calculator API
+npm run start:calculator
 
-# Should see: MCP Server running on port 3001
+# MCP Server
+npm run start:mcp
 
-Terminal 3: Start LLM Agent
-bash
-cd llm-agent
-npm start
+# MCP Client
+npm run start:client
+```
 
-# Should see: LLM Agent initializing...
+## Usage
 
-Testing the System
-Once all three components are running, you can interact with the LLM Agent in Terminal 3:
+Once the service is running, you can interact with it through the client interface. Here are some example commands:
 
-Ask it to help you with calculations:
-"Add 5 and 7"
-"What is 10 plus 20?"
-"Calculate 15.5 + 4.5"
-Type "help" to see available commands
-Type "exit" or "quit" to end the conversation
-How It Works
-Calculator API - A simple Express server that provides a mathematical addition service
-MCP Server - Acts as a tool provider, exposing the Calculator API functionality as a tool
-LLM Agent - Simulates an LLM that can understand user requests and use tools via the MCP Server
-System Flow
-User sends a message to the LLM Agent
-Agent parses the message to understand intent
-If addition is requested, Agent calls the MCP Server's execute endpoint
-MCP Server calls the Calculator API to perform the calculation
-Result flows back through the chain to the user
-Environment Variables
-You can customize the connections between components using these environment variables:
+- "Add 5 and 3"
+- "What is 10 plus 20?"
+- "Calculate 7.5 + 2.25"
+- "Multiply 4 by 6"
+- "What is 8 times 3?"
 
-For the MCP Server:
-PORT: The port for the MCP Server (default: 3001)
-CALCULATOR_API_URL: URL of the Calculator API (default: http://localhost:3000)
-For the LLM Agent:
-MCP_SERVER_URL: URL of the MCP Server (default: http://localhost:3001)
-Extending the System
-You can extend this system by:
+Type "help" for more examples or "exit" to quit.
 
-Adding more operations to the Calculator API (subtract, multiply, divide)
-Registering those operations as tools in the MCP Server
-Enhancing the LLM Agent to detect and use those additional tools
+## API Endpoints
+
+### Calculator API (Port 3000)
+
+- `POST /:operation` - Perform mathematical operations (add, subtract, multiply, divide, power)
+- `GET /health` - Health check endpoint
+
+### MCP Server (Port 3001)
+
+- `GET /tools` - List available tools
+- `POST /execute/:toolId` - Execute a specific tool
+- `POST /agent` - Process natural language requests
+- `GET /health` - Health check endpoint
+
+## Error Handling
+
+The service includes comprehensive error handling for:
+
+- Invalid mathematical operations
+- Division by zero
+- Invalid parameter types
+- LLM response parsing errors
+- Network errors
+
+## Dependencies
+
+- @anthropic-ai/sdk: ^0.51.0
+- axios: ^1.6.7
+- body-parser: ^1.20.2
+- cors: ^2.8.5
+- dotenv: ^16.4.5
+- express: ^4.18.3
+- concurrently: ^8.2.2 (dev dependency)
