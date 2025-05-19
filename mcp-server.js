@@ -3,6 +3,10 @@ const bodyParser = require("body-parser");
 const cors = require("cors");
 const axios = require("axios");
 const { Anthropic } = require("@anthropic-ai/sdk");
+const {
+  CloudWatchLogsClient,
+  FilterLogEventsCommand,
+} = require("@aws-sdk/client-cloudwatch-logs");
 require("dotenv").config();
 
 const app = express();
@@ -14,6 +18,15 @@ app.use(bodyParser.json());
 // Initialize Anthropic client
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
+});
+
+// Initialize AWS CloudWatch Logs client
+const cloudWatchLogsClient = new CloudWatchLogsClient({
+  region: process.env.AWS_REGION || "us-east-1",
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
 });
 
 // Configuration
@@ -87,6 +100,33 @@ const tools = [
       required: ["num1", "num2"],
     },
   },
+  {
+    id: "scan_logs",
+    name: "cloudwatch_logs",
+    description: "Scans AWS CloudWatch logs for specific string patterns",
+    parameters: {
+      type: "object",
+      properties: {
+        logGroupName: {
+          type: "string",
+          description: "Name of the CloudWatch log group",
+        },
+        searchString: {
+          type: "string",
+          description: "String pattern to search for in logs",
+        },
+        startTime: {
+          type: "number",
+          description: "Start time in milliseconds since epoch",
+        },
+        endTime: {
+          type: "number",
+          description: "End time in milliseconds since epoch",
+        },
+      },
+      required: ["logGroupName", "searchString"],
+    },
+  },
 ];
 
 // System prompt for Claude
@@ -97,6 +137,7 @@ const SYSTEM_PROMPT = `You are an AI assistant that helps users perform calculat
 3. **Multiplication (multiply)**: Multiplies two numbers together.
 4. **Division (divide)**: Divides the first number (dividend) by the second number (divisor).
 5. **Power (power)**: Raises the first number (base) to the power of the second number (exponent).
+6. **CloudWatch Logs (scan_logs)**: Searches AWS CloudWatch logs for specific string patterns.
 
 When a user asks for a calculation:
 - Determine the correct tool to use.
@@ -104,6 +145,7 @@ When a user asks for a calculation:
   - For subtraction: **num1** is the number being subtracted from, **num2** is the number being subtracted.
   - For division: **num1** is the dividend (number being divided), **num2** is the divisor (number to divide by).
   - For power: **num1** is the base, **num2** is the exponent.
+  - For CloudWatch logs: **logGroupName** is the name of the log group, **searchString** is the pattern to search for.
 
 For complex expressions, break them into steps by adhering to the BODMAS rules:
 1. **Brackets**
@@ -117,10 +159,15 @@ For complex expressions, break them into steps by adhering to the BODMAS rules:
 Always respond in JSON format with the following structure:
 
 {
-  "tool": "add" | "subtract" | "multiply" | "divide" | "power",
+  "tool": "add" | "subtract" | "multiply" | "divide" | "power" | "scan_logs",
   "parameters": {
     "num1": number,
     "num2": number
+  } | {
+    "logGroupName": string,
+    "searchString": string,
+    "startTime"?: number,
+    "endTime"?: number
   },
   "explanation": "Brief explanation of what you're doing"
 }`;
@@ -186,6 +233,21 @@ app.post("/execute/:toolId", async (req, res) => {
   try {
     if (!tools.find((t) => t.id === toolId)) {
       return res.status(404).json({ error: `Tool '${toolId}' not found` });
+    }
+
+    if (toolId === "scan_logs") {
+      const command = new FilterLogEventsCommand({
+        logGroupName: params.logGroupName,
+        filterPattern: params.searchString,
+        startTime: params.startTime,
+        endTime: params.endTime,
+      });
+
+      const response = await cloudWatchLogsClient.send(command);
+      return res.json({
+        events: response.events,
+        nextToken: response.nextToken,
+      });
     }
 
     const response = await axios.post(
