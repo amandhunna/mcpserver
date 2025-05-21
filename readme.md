@@ -1,3 +1,5 @@
+- https://www.anthropic.com/news/model-context-protocol
+
 # MCP Calculator Service
 
 A Model-Context-Protocol (MCP) implementation for a calculator service that uses Claude AI to process natural language requests and perform mathematical calculations.
