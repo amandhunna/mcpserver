@@ -6,6 +6,7 @@ const { Anthropic } = require("@anthropic-ai/sdk");
 const {
   CloudWatchLogsClient,
   FilterLogEventsCommand,
+  DescribeLogGroupsCommand,
 } = require("@aws-sdk/client-cloudwatch-logs");
 require("dotenv").config();
 
@@ -185,26 +186,21 @@ async function processUserMessage(message) {
     console.log("response", JSON.stringify(response));
     const content = response.content[0].text;
     try {
-      const parsedResponse = JSON.parse(content);
-
-      // Validate the response structure
-      if (
-        !parsedResponse.tool ||
-        !parsedResponse.parameters ||
-        !parsedResponse.explanation
-      ) {
-        throw new Error("Invalid response structure");
+      // First try to find JSON in markdown code blocks
+      const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/);
+      if (jsonMatch) {
+        const parsedResponse = JSON.parse(jsonMatch[1].trim());
+        return validateAndReturnResponse(parsedResponse);
       }
 
-      // Validate parameters
-      if (
-        typeof parsedResponse.parameters.num1 !== "number" ||
-        typeof parsedResponse.parameters.num2 !== "number"
-      ) {
-        throw new Error("Invalid parameter types");
+      // If no markdown code block, try to find any JSON object in the text
+      const jsonObjectMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonObjectMatch) {
+        const parsedResponse = JSON.parse(jsonObjectMatch[0].trim());
+        return validateAndReturnResponse(parsedResponse);
       }
 
-      return parsedResponse;
+      throw new Error("No valid JSON found in response");
     } catch (e) {
       console.error("Error parsing Claude response:", e);
       return {
@@ -216,6 +212,38 @@ async function processUserMessage(message) {
     console.error("Error calling Claude:", error);
     throw error;
   }
+}
+
+// Helper function to validate and return the response
+function validateAndReturnResponse(parsedResponse) {
+  // Validate the response structure
+  if (
+    !parsedResponse.tool ||
+    !parsedResponse.parameters ||
+    !parsedResponse.explanation
+  ) {
+    throw new Error("Invalid response structure");
+  }
+
+  // Validate parameters based on tool type
+  if (parsedResponse.tool === "scan_logs") {
+    if (
+      typeof parsedResponse.parameters.logGroupName !== "string" ||
+      typeof parsedResponse.parameters.searchString !== "string"
+    ) {
+      throw new Error("Invalid parameter types for scan_logs");
+    }
+  } else {
+    // Validate calculator parameters
+    if (
+      typeof parsedResponse.parameters.num1 !== "number" ||
+      typeof parsedResponse.parameters.num2 !== "number"
+    ) {
+      throw new Error("Invalid parameter types for calculator operations");
+    }
+  }
+
+  return parsedResponse;
 }
 
 // Endpoint for tool discovery
@@ -280,14 +308,100 @@ app.post("/agent", async (req, res) => {
     }
 
     const { tool, parameters, explanation } = claudeResponse;
-    const executeResponse = await axios.post(
-      `${CALCULATOR_API_URL}/${tool}`,
-      parameters
-    );
+
+    let result;
+    if (tool === "scan_logs") {
+      try {
+        // Special case: Listing all log groups
+        if (
+          parameters.logGroupName === "/" ||
+          parameters.logGroupName === "*"
+        ) {
+          const allLogGroups = await cloudWatchLogsClient.send(
+            new DescribeLogGroupsCommand({})
+          );
+
+          return res.json({
+            explanation: "Listing all available AWS CloudWatch log groups",
+            result: {
+              logGroups:
+                allLogGroups.logGroups?.map((group) => ({
+                  name: group.logGroupName,
+                  lastEventTime: group.lastEventTimestamp,
+                  creationTime: group.creationTime,
+                  retentionInDays: group.retentionInDays,
+                })) || [],
+            },
+            toolUsed: "list_log_groups",
+          });
+        }
+
+        // Normal case: Searching within a specific log group
+        const logGroupName = parameters.logGroupName.startsWith("/aws/lambda/")
+          ? parameters.logGroupName
+          : `/aws/lambda/${parameters.logGroupName}`;
+
+        // First verify if the log group exists
+        const logGroups = await cloudWatchLogsClient.send(
+          new DescribeLogGroupsCommand({
+            logGroupNamePrefix: logGroupName,
+          })
+        );
+
+        if (!logGroups.logGroups || logGroups.logGroups.length === 0) {
+          // Get all available log groups for better error message
+          const allLogGroups = await cloudWatchLogsClient.send(
+            new DescribeLogGroupsCommand({})
+          );
+
+          return res.status(404).json({
+            error: `Log group '${logGroupName}' not found.`,
+            availableLogGroups:
+              allLogGroups.logGroups?.map((group) => group.logGroupName) || [],
+            message: "Please use one of the available log groups listed above.",
+          });
+        }
+
+        const command = new FilterLogEventsCommand({
+          logGroupName: logGroupName,
+          filterPattern: parameters.searchString || "",
+          startTime: parameters.startTime,
+          endTime: parameters.endTime,
+        });
+        const response = await cloudWatchLogsClient.send(command);
+        result = {
+          events: response.events || [],
+          nextToken: response.nextToken,
+          logGroupName: logGroupName,
+        };
+      } catch (error) {
+        console.error("CloudWatch error:", error);
+        if (error.name === "ResourceNotFoundException") {
+          // Get all available log groups for better error message
+          const allLogGroups = await cloudWatchLogsClient.send(
+            new DescribeLogGroupsCommand({})
+          );
+
+          return res.status(404).json({
+            error: `Log group '${parameters.logGroupName}' not found.`,
+            availableLogGroups:
+              allLogGroups.logGroups?.map((group) => group.logGroupName) || [],
+            message: "Please use one of the available log groups listed above.",
+          });
+        }
+        throw error;
+      }
+    } else {
+      const executeResponse = await axios.post(
+        `${CALCULATOR_API_URL}/${tool}`,
+        parameters
+      );
+      result = executeResponse.data;
+    }
 
     return res.json({
       explanation,
-      result: executeResponse.data,
+      result,
       toolUsed: tool,
     });
   } catch (error) {
